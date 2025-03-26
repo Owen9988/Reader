@@ -40,6 +40,11 @@
   <header>
     <h1><i class="fa-solid fa-file-import"></i> File Import & Export Tool</h1>
   </header>
+  
+  <!-- Notification element for filter success -->
+  <div id="notification" style="display:none; position:fixed; top:0; left:0; right:0; background-color:#d4edda; color:#155724; padding:10px; text-align:center; z-index:1000;">
+    Filtered successfully
+  </div>
 
   <main>
     <section id="drop-area" class="card">
@@ -294,7 +299,6 @@
         allData = processedData.slice();
         currentFilteredData = allData.slice();
         console.log("Final Data:", allData);
-        // Use the new chunked renderTable method for large data sets
         renderTableChunked(allData);
       }, 2000);
     }
@@ -327,7 +331,7 @@
       renderChunk();
     }
 
-    // Updated filter: after filtering, show notification and render table using chunked rendering
+    // Updated filter: after filtering, show notification (non-blocking) and render table using chunked rendering
     filterDataBtn.addEventListener('click', () => {
       const startTime = document.getElementById('startHour').value + ":" + document.getElementById('startMinute').value;
       const endTime = document.getElementById('endHour').value + ":" + document.getElementById('endMinute').value;
@@ -348,9 +352,11 @@
       });
       console.log("Filtered Data:", filtered);
       currentFilteredData = filtered.slice();
-      // Render filtered data using chunked rendering
       renderTableChunked(filtered);
-      alert("Filtered successfully");
+      // Show custom notification (non-blocking)
+      const note = document.getElementById('notification');
+      note.style.display = 'block';
+      setTimeout(() => { note.style.display = 'none'; }, 3000);
     });
 
     // Updated reset: Clear filter selections and restore original data using chunked rendering
