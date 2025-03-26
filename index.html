@@ -41,9 +41,9 @@
     <h1><i class="fa-solid fa-file-import"></i> File Import & Export Tool</h1>
   </header>
   
-  <!-- Notification element for filter success -->
+  <!-- Notification element for filtering -->
   <div id="notification" style="display:none; position:fixed; top:0; left:0; right:0; background-color:#d4edda; color:#155724; padding:10px; text-align:center; z-index:1000;">
-    Filtered successfully
+    Filtering data, please wait...
   </div>
 
   <main>
@@ -331,12 +331,18 @@
       renderChunk();
     }
 
-    // Updated filter: after filtering, show notification (non-blocking) and render table using chunked rendering
+    // Updated filter: Show notification "Filtering data, please wait..." on top and render table using chunked rendering
     filterDataBtn.addEventListener('click', () => {
+      // Show notification immediately
+      const note = document.getElementById('notification');
+      note.textContent = "Filtering data, please wait...";
+      note.style.display = 'block';
+      
       const startTime = document.getElementById('startHour').value + ":" + document.getElementById('startMinute').value;
       const endTime = document.getElementById('endHour').value + ":" + document.getElementById('endMinute').value;
       if (!startTime || !endTime) {
         alert("Please select both start and end times completely.");
+        note.style.display = 'none';
         return;
       }
       const toMins = t => {
@@ -353,9 +359,7 @@
       console.log("Filtered Data:", filtered);
       currentFilteredData = filtered.slice();
       renderTableChunked(filtered);
-      // Show custom notification (non-blocking)
-      const note = document.getElementById('notification');
-      note.style.display = 'block';
+      // Hide notification after 3 seconds
       setTimeout(() => { note.style.display = 'none'; }, 3000);
     });
 
