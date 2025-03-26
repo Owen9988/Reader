@@ -294,11 +294,13 @@
         allData = processedData.slice();
         currentFilteredData = allData.slice();
         console.log("Final Data:", allData);
-        renderTable(allData);
+        // Use the new chunked renderTable method for large data sets
+        renderTableChunked(allData);
       }, 2000);
     }
 
-    function renderTable(data) {
+    // New function: renderTableChunked to render rows in chunks (avoids freezing)
+    function renderTableChunked(data) {
       dataTable.innerHTML = "";
       if (data.length === 0) {
         dataTable.innerHTML = "<tr><td>No data available</td></tr>";
@@ -306,16 +308,26 @@
       }
       const headers = Object.keys(data[0]);
       const allHeaders = ["No."].concat(headers);
-      let thead = "<tr>" + allHeaders.map(h => `<th>${h}</th>`).join('') + "</tr>";
-      dataTable.innerHTML += thead;
-      data.forEach((item, idx) => {
-        let rowData = [idx + 1];
-        headers.forEach(h => rowData.push(item[h] || ''));
-        let row = "<tr>" + rowData.map(cell => `<td>${cell}</td>`).join('') + "</tr>";
-        dataTable.innerHTML += row;
-      });
+      let html = "<tr>" + allHeaders.map(h => `<th>${h}</th>`).join('') + "</tr>";
+      let index = 0;
+      const chunkSize = 100;
+      function renderChunk() {
+        let end = Math.min(index + chunkSize, data.length);
+        for (let i = index; i < end; i++) {
+          let rowData = [i + 1];
+          headers.forEach(h => rowData.push(data[i][h] || ''));
+          html += "<tr>" + rowData.map(cell => `<td>${cell}</td>`).join('') + "</tr>";
+        }
+        dataTable.innerHTML = html;
+        index += chunkSize;
+        if (index < data.length) {
+          setTimeout(renderChunk, 0);
+        }
+      }
+      renderChunk();
     }
 
+    // Updated filter: after filtering, show notification and render table using chunked rendering
     filterDataBtn.addEventListener('click', () => {
       const startTime = document.getElementById('startHour').value + ":" + document.getElementById('startMinute').value;
       const endTime = document.getElementById('endHour').value + ":" + document.getElementById('endMinute').value;
@@ -336,17 +348,19 @@
       });
       console.log("Filtered Data:", filtered);
       currentFilteredData = filtered.slice();
-      renderTable(filtered);
+      // Render filtered data using chunked rendering
+      renderTableChunked(filtered);
+      alert("Filtered successfully");
     });
 
-    // Updated Reset: Clear filter selections and restore original data
+    // Updated reset: Clear filter selections and restore original data using chunked rendering
     resetFilterBtn.addEventListener('click', () => {
       document.getElementById('startHour').selectedIndex = 0;
       document.getElementById('startMinute').selectedIndex = 0;
       document.getElementById('endHour').selectedIndex = 0;
       document.getElementById('endMinute').selectedIndex = 0;
       currentFilteredData = allData.slice();
-      renderTable(allData);
+      renderTableChunked(allData);
     });
 
     exportBtn.addEventListener('click', () => {
