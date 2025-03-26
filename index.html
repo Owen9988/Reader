@@ -339,6 +339,7 @@
       renderTable(filtered);
     });
 
+    // Updated Reset: Clear filter selections and restore original data
     resetFilterBtn.addEventListener('click', () => {
       document.getElementById('startHour').selectedIndex = 0;
       document.getElementById('startMinute').selectedIndex = 0;
