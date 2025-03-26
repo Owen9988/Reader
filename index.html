@@ -213,6 +213,7 @@
       return (match && match[1]) ? match[1] : (raw.length >= 5 ? raw.substring(0,5) : raw);
     }
 
+    // Updated: Process text file in chunks to prevent UI freezing
     function readTextFile(file) {
       const reader = new FileReader();
       reader.onload = e => {
@@ -222,24 +223,34 @@
         let lines = content.split('\n').filter(line => line.trim() !== "");
         console.log("Parsed lines:", lines);
         let start = lines[0].toLowerCase().includes("time") ? 1 : 0;
-        for (let i = start; i < lines.length; i++) {
-          let parts = lines[i].split(delimiter);
-          if (parts.length >= 4) {
-            processedData.push({
-              "Time": extractTime(parts[0].trim()),
-              "Price": parts[1].trim(),
-              "Vol": parts[2].trim(),
-              "AccVol": parts[3].trim(),
-              "Source": file.name
-            });
+        function processChunk(index) {
+          let chunkSize = 100; // process 100 lines at a time
+          let end = Math.min(index + chunkSize, lines.length);
+          for (let i = index; i < end; i++) {
+            let parts = lines[i].split(delimiter);
+            if (parts.length >= 4) {
+              processedData.push({
+                "Time": extractTime(parts[0].trim()),
+                "Price": parts[1].trim(),
+                "Vol": parts[2].trim(),
+                "AccVol": parts[3].trim(),
+                "Source": file.name
+              });
+            }
+          }
+          if (end < lines.length) {
+            setTimeout(() => processChunk(end), 0);
+          } else {
+            console.log("Processed text data:", processedData);
+            simulateLoading();
           }
         }
-        console.log("Processed text data:", processedData);
-        simulateLoading();
+        processChunk(start);
       };
       reader.readAsText(file);
     }
 
+    // Updated: Process Excel file in chunks to prevent UI freezing
     function readExcelFile(file) {
       const reader = new FileReader();
       reader.onload = e => {
@@ -249,17 +260,27 @@
         let ws = wb.Sheets[sheetName];
         let jsonData = XLSX.utils.sheet_to_json(ws);
         console.log("Excel JSON:", jsonData);
-        jsonData.forEach(row => {
-          if (row.Time || row.time) {
-            let t = row.Time ? String(row.Time) : String(row.time);
-            row.Time = extractTime(t);
-            if (row.Text) delete row.Text;
-            row.Source = file.name;
-            processedData.push(row);
+        function processExcelChunk(index) {
+          let chunkSize = 100; // process 100 rows at a time
+          let end = Math.min(index + chunkSize, jsonData.length);
+          for (let i = index; i < end; i++) {
+            let row = jsonData[i];
+            if (row.Time || row.time) {
+              let t = row.Time ? String(row.Time) : String(row.time);
+              row.Time = extractTime(t);
+              if (row.Text) delete row.Text;
+              row.Source = file.name;
+              processedData.push(row);
+            }
           }
-        });
-        console.log("Processed Excel data:", processedData);
-        simulateLoading();
+          if (end < jsonData.length) {
+            setTimeout(() => processExcelChunk(end), 0);
+          } else {
+            console.log("Processed Excel data:", processedData);
+            simulateLoading();
+          }
+        }
+        processExcelChunk(0);
       };
       reader.readAsArrayBuffer(file);
     }
