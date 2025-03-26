@@ -40,11 +40,6 @@
   <header>
     <h1><i class="fa-solid fa-file-import"></i> File Import & Export Tool</h1>
   </header>
-  
-  <!-- Notification element for filter success -->
-  <div id="notification" style="display:none; position:fixed; top:0; left:0; right:0; background-color:#d4edda; color:#155724; padding:10px; text-align:center; z-index:1000;">
-    Filtered successfully
-  </div>
 
   <main>
     <section id="drop-area" class="card">
@@ -299,12 +294,11 @@
         allData = processedData.slice();
         currentFilteredData = allData.slice();
         console.log("Final Data:", allData);
-        renderTableChunked(allData);
+        renderTable(allData);
       }, 2000);
     }
 
-    // New function: renderTableChunked to render rows in chunks (avoids freezing)
-    function renderTableChunked(data) {
+    function renderTable(data) {
       dataTable.innerHTML = "";
       if (data.length === 0) {
         dataTable.innerHTML = "<tr><td>No data available</td></tr>";
@@ -312,26 +306,16 @@
       }
       const headers = Object.keys(data[0]);
       const allHeaders = ["No."].concat(headers);
-      let html = "<tr>" + allHeaders.map(h => `<th>${h}</th>`).join('') + "</tr>";
-      let index = 0;
-      const chunkSize = 100;
-      function renderChunk() {
-        let end = Math.min(index + chunkSize, data.length);
-        for (let i = index; i < end; i++) {
-          let rowData = [i + 1];
-          headers.forEach(h => rowData.push(data[i][h] || ''));
-          html += "<tr>" + rowData.map(cell => `<td>${cell}</td>`).join('') + "</tr>";
-        }
-        dataTable.innerHTML = html;
-        index += chunkSize;
-        if (index < data.length) {
-          setTimeout(renderChunk, 0);
-        }
-      }
-      renderChunk();
+      let thead = "<tr>" + allHeaders.map(h => `<th>${h}</th>`).join('') + "</tr>";
+      dataTable.innerHTML += thead;
+      data.forEach((item, idx) => {
+        let rowData = [idx + 1];
+        headers.forEach(h => rowData.push(item[h] || ''));
+        let row = "<tr>" + rowData.map(cell => `<td>${cell}</td>`).join('') + "</tr>";
+        dataTable.innerHTML += row;
+      });
     }
 
-    // Updated filter: after filtering, show notification (non-blocking) and render table using chunked rendering
     filterDataBtn.addEventListener('click', () => {
       const startTime = document.getElementById('startHour').value + ":" + document.getElementById('startMinute').value;
       const endTime = document.getElementById('endHour').value + ":" + document.getElementById('endMinute').value;
@@ -352,21 +336,16 @@
       });
       console.log("Filtered Data:", filtered);
       currentFilteredData = filtered.slice();
-      renderTableChunked(filtered);
-      // Show custom notification (non-blocking)
-      const note = document.getElementById('notification');
-      note.style.display = 'block';
-      setTimeout(() => { note.style.display = 'none'; }, 3000);
+      renderTable(filtered);
     });
 
-    // Updated reset: Clear filter selections and restore original data using chunked rendering
     resetFilterBtn.addEventListener('click', () => {
       document.getElementById('startHour').selectedIndex = 0;
       document.getElementById('startMinute').selectedIndex = 0;
       document.getElementById('endHour').selectedIndex = 0;
       document.getElementById('endMinute').selectedIndex = 0;
       currentFilteredData = allData.slice();
-      renderTableChunked(allData);
+      renderTable(allData);
     });
 
     exportBtn.addEventListener('click', () => {
