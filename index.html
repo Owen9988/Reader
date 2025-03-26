@@ -3,35 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <title>File Import & Export Tool</title>
-  <!-- Font Awesome for icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="style.css">
   <script>
-    // ----- Device & Access Control (Client-Side Simulation) -----
-    // Allowed passcodes – only two users allowed by default.
     const allowedPasscodes = ["owen", "teo"]; 
-    const maxDevices = 2; // Change this to 3 to allow more devices
-
-    // Retrieve active devices from localStorage. 
-    // NOTE: localStorage is per device, so this global list only simulates a server-side store.
+    const maxDevices = 2; 
     let activeDevices = JSON.parse(localStorage.getItem("globalActiveDevices")) || [];
 
     function checkAccess() {
-      // Check if this device is already registered permanently.
       let myDeviceKey = localStorage.getItem("myDeviceKey");
       if (myDeviceKey) {
-        return; // Already registered on this device; do not prompt.
+        return; 
       }
-      // Prompt user for passcode
       let pass = prompt("Enter your access passcode:");
       if (!allowedPasscodes.includes(pass)) {
         alert("Access Denied.");
         document.body.innerHTML = "<h2 style='text-align:center;color:#d9534f;margin-top:40px;'>Access Denied</h2>";
         return;
       }
-      // Create a unique device key using the passcode and the browser's user agent.
       myDeviceKey = pass + "_" + navigator.userAgent;
-      // If this device key is not already in the global allowed list, check the device limit.
       if (!activeDevices.includes(myDeviceKey)) {
         if (activeDevices.length >= maxDevices) {
           alert("Maximum device limit reached. Access Denied.");
@@ -41,11 +31,9 @@
         activeDevices.push(myDeviceKey);
         localStorage.setItem("globalActiveDevices", JSON.stringify(activeDevices));
       }
-      // Save the device key permanently on this device.
       localStorage.setItem("myDeviceKey", myDeviceKey);
     }
     window.onload = checkAccess;
-    // ----- End Access Control -----
   </script>
 </head>
 <body>
@@ -53,22 +41,17 @@
     <h1><i class="fa-solid fa-file-import"></i> File Import & Export Tool</h1>
   </header>
 
-  <!-- (The remainder of your HTML remains unchanged) -->
   <main>
-    <!-- Drag and Drop Area -->
     <section id="drop-area" class="card">
       <p><i class="fa-solid fa-cloud-arrow-up"></i> Drag & drop your file here</p>
       <input type="file" id="fileElem" accept=".txt, .xlsx, .xls" multiple style="display:none;">
       <button id="fileSelect" title="Select Files"><i class="fa-solid fa-folder-open"></i> Select Files</button>
     </section>
 
-    <!-- Uploaded File List -->
     <section id="fileList" class="card"></section>
 
-    <!-- Loading Message -->
     <div id="loadingMessage"><i class="fa-solid fa-spinner fa-spin"></i> Loading file, please wait...</div>
 
-    <!-- Time Filter Controls -->
     <section id="data-input" class="card" style="display:none;">
       <h2><i class="fa-solid fa-filter"></i> Filter Data by Time</h2>
       <div class="time-filter">
@@ -93,7 +76,6 @@
       </div>
     </section>
 
-    <!-- Processed Data & Export -->
     <section id="output" class="card" style="display:none;">
       <div id="tableHeader">
         <button id="exportBtn" title="Export to Excel"><i class="fa-solid fa-file-export"></i> Excel</button>
@@ -103,10 +85,8 @@
     </section>
   </main>
 
-  <!-- SheetJS Library -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   <script>
-    // ------------------ Controller Code (Unchanged) ------------------
     const dropArea = document.getElementById('drop-area');
     const fileElem = document.getElementById('fileElem');
     const fileSelect = document.getElementById('fileSelect');
@@ -233,6 +213,7 @@
       return (match && match[1]) ? match[1] : (raw.length >= 5 ? raw.substring(0,5) : raw);
     }
 
+    // Updated: Process text file in chunks to prevent UI freezing
     function readTextFile(file) {
       const reader = new FileReader();
       reader.onload = e => {
@@ -242,24 +223,34 @@
         let lines = content.split('\n').filter(line => line.trim() !== "");
         console.log("Parsed lines:", lines);
         let start = lines[0].toLowerCase().includes("time") ? 1 : 0;
-        for (let i = start; i < lines.length; i++) {
-          let parts = lines[i].split(delimiter);
-          if (parts.length >= 4) {
-            processedData.push({
-              "Time": extractTime(parts[0].trim()),
-              "Price": parts[1].trim(),
-              "Vol": parts[2].trim(),
-              "AccVol": parts[3].trim(),
-              "Source": file.name
-            });
+        function processChunk(index) {
+          let chunkSize = 100; // process 100 lines at a time
+          let end = Math.min(index + chunkSize, lines.length);
+          for (let i = index; i < end; i++) {
+            let parts = lines[i].split(delimiter);
+            if (parts.length >= 4) {
+              processedData.push({
+                "Time": extractTime(parts[0].trim()),
+                "Price": parts[1].trim(),
+                "Vol": parts[2].trim(),
+                "AccVol": parts[3].trim(),
+                "Source": file.name
+              });
+            }
+          }
+          if (end < lines.length) {
+            setTimeout(() => processChunk(end), 0);
+          } else {
+            console.log("Processed text data:", processedData);
+            simulateLoading();
           }
         }
-        console.log("Processed text data:", processedData);
-        simulateLoading();
+        processChunk(start);
       };
       reader.readAsText(file);
     }
 
+    // Updated: Process Excel file in chunks to prevent UI freezing
     function readExcelFile(file) {
       const reader = new FileReader();
       reader.onload = e => {
@@ -269,17 +260,27 @@
         let ws = wb.Sheets[sheetName];
         let jsonData = XLSX.utils.sheet_to_json(ws);
         console.log("Excel JSON:", jsonData);
-        jsonData.forEach(row => {
-          if (row.Time || row.time) {
-            let t = row.Time ? String(row.Time) : String(row.time);
-            row.Time = extractTime(t);
-            if (row.Text) delete row.Text;
-            row.Source = file.name;
-            processedData.push(row);
+        function processExcelChunk(index) {
+          let chunkSize = 100; // process 100 rows at a time
+          let end = Math.min(index + chunkSize, jsonData.length);
+          for (let i = index; i < end; i++) {
+            let row = jsonData[i];
+            if (row.Time || row.time) {
+              let t = row.Time ? String(row.Time) : String(row.time);
+              row.Time = extractTime(t);
+              if (row.Text) delete row.Text;
+              row.Source = file.name;
+              processedData.push(row);
+            }
           }
-        });
-        console.log("Processed Excel data:", processedData);
-        simulateLoading();
+          if (end < jsonData.length) {
+            setTimeout(() => processExcelChunk(end), 0);
+          } else {
+            console.log("Processed Excel data:", processedData);
+            simulateLoading();
+          }
+        }
+        processExcelChunk(0);
       };
       reader.readAsArrayBuffer(file);
     }
@@ -358,8 +359,8 @@
       };
       let sorted = currentFilteredData.slice().sort((a, b) => toMins(a.Time) - toMins(b.Time));
       console.log("Sorted Data:", sorted);
-      let open = parseFloat(sorted[sorted.length - 1].Price); // Last record becomes Open
-      let close = parseFloat(sorted[0].Price);                // First record becomes Close
+      let open = parseFloat(sorted[sorted.length - 1].Price); 
+      let close = parseFloat(sorted[0].Price);               
       let high = -Infinity;
       let low = Infinity;
       let totalVol = 0;
@@ -382,14 +383,12 @@
       const exportData = currentFilteredData.map((item, idx) => ({ "No.": idx + 1, ...item }));
       let ws = XLSX.utils.json_to_sheet(exportData);
       let colCount = Object.keys(exportData[0]).length;
-      // Place summary table beside filtered data (starting at column colCount+2)
       XLSX.utils.sheet_add_json(ws, summary, { origin: { r: 0, c: colCount + 2 }, skipHeader: false });
       let wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "FilteredData");
       XLSX.writeFile(wb, "exported_data.xlsx");
     });
 
-    // Copy share link functionality
     document.getElementById('copyLink').addEventListener('click', () => {
       const shareInput = document.getElementById('shareLink');
       shareInput.select();
@@ -403,7 +402,6 @@
         });
     });
 
-    // Set share link to current URL on page load
     document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('shareLink').value = window.location.href;
     });
