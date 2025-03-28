@@ -5,6 +5,22 @@
   <title>File Import & Export Tool</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="style.css">
+  <style>
+    /* Optional: Make the table container scrollable (adjust height as needed) */
+    #output {
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    /* Extra styling for the filter section for better appearance when sticky */
+    #data-input {
+      position: sticky;
+      top: 0;
+      background: #fff;
+      padding: 10px 20px;  /* extra horizontal padding added */
+      z-index: 100;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+  </style>
   <script>
     const allowedPasscodes = ["owen", "teo"];
     const maxDevices = 2;
@@ -61,6 +77,11 @@
 
     <section id="fileList" class="card"></section>
 
+    <!-- New Data Count Section (hidden by default) -->
+    <section id="dataCount" class="card" style="display:none;">
+      <p>Total Data Rows: <span id="dataCountValue"></span></p>
+    </section>
+
     <div id="loadingMessage">
       <i class="fa-solid fa-spinner fa-spin"></i> Loading file, please wait...
     </div>
@@ -87,9 +108,14 @@
         <button id="filterData" title="Apply Filter">
           <i class="fa-solid fa-magnifying-glass"></i> Filter Data
         </button>
+        <!-- Clear Filter Button -->
+        <button id="clearFilterBtn" title="Clear Filter">
+          <i class="fa-solid fa-eraser"></i> Clear Filter
+        </button>
       </div>
     </section>
 
+    <!-- The output table will only be shown when a filter is applied -->
     <section id="output" class="card" style="display:none;">
       <div id="tableHeader">
         <button id="exportBtn" title="Export to Excel">
@@ -121,15 +147,25 @@
     const exportBtn = document.getElementById('exportBtn');
     const filterDataBtn = document.getElementById('filterData');
     const filterLoading = document.getElementById('filterLoading');
+    const clearFilterBtn = document.getElementById('clearFilterBtn');
+    const dataCountSection = document.getElementById('dataCount');
+    const dataCountValue = document.getElementById('dataCountValue');
 
     let uploadedFiles = [];
     let processedData = [];
     let allData = [];
     let currentFilteredData = [];
 
+    // Pagination variables
+    let currentPage = 1;
+    const pageSize = 100;
+    let isLoadingPage = false; // Prevent concurrent loads
+
     document.addEventListener('DOMContentLoaded', () => {
       loadingMessage.style.display = 'none';
       populateTimeSelects();
+      // Listen to scroll events on the output section
+      outputSection.addEventListener('scroll', handleScroll);
     });
 
     function populateTimeSelects() {
@@ -187,12 +223,14 @@
       allData = [];
       currentFilteredData = [];
       uploadedFiles = [];
-      renderTable([]);
+      // Clear table and data count
+      renderPage(1, true);
       updateFileList();
       loadingMessage.style.display = 'block';
       dataInput.style.display = 'none';
       outputSection.style.display = 'none';
       exportBtn.style.display = 'none';
+      dataCountSection.style.display = 'none';
 
       [...files].forEach(file => {
         if (!uploadedFiles.some(f => f.name === file.name)) {
@@ -236,7 +274,7 @@
       allData = allData.filter(item => item.Source !== name);
       currentFilteredData = currentFilteredData.filter(item => item.Source !== name);
       updateFileList();
-      renderTable(allData);
+      renderPage(1, true);
     }
 
     function extractTime(raw) {
@@ -315,35 +353,80 @@
       reader.readAsArrayBuffer(file);
     }
 
+    /**
+     * renderPage(page, reset)
+     * If reset is true then clear the table (for page 1).
+     * Otherwise, append rows for the given page.
+     */
+    function renderPage(page, reset = false) {
+      // For page 1 or if a full reset is required, clear the table.
+      if (reset) {
+        dataTable.innerHTML = "";
+      }
+      
+      // If there is no data, display a message.
+      if (currentFilteredData.length === 0) {
+        dataTable.innerHTML = "<tr><td>No data available</td></tr>";
+        return;
+      }
+      
+      // Only add the header when resetting (i.e., page 1)
+      if (reset) {
+        const headers = Object.keys(currentFilteredData[0]);
+        const allHeaders = ["No."].concat(headers);
+        let thead = "<tr>" + allHeaders.map(h => `<th>${h}</th>`).join('') + "</tr>";
+        dataTable.innerHTML += thead;
+      }
+      
+      const start = (page - 1) * pageSize;
+      const end = Math.min(start + pageSize, currentFilteredData.length);
+      
+      for (let idx = start; idx < end; idx++) {
+        const item = currentFilteredData[idx];
+        let rowData = [idx + 1];
+        Object.keys(item).forEach(h => {
+          rowData.push(item[h] || '');
+        });
+        let row = "<tr>" + rowData.map(cell => `<td>${cell}</td>`).join('') + "</tr>";
+        dataTable.innerHTML += row;
+      }
+      
+      isLoadingPage = false;
+    }
+
+    // Detect when the user scrolls near the bottom of the output section
+    function handleScroll() {
+      // Adjust threshold as needed (in pixels)
+      const threshold = 100;
+      if (outputSection.scrollTop + outputSection.clientHeight >= outputSection.scrollHeight - threshold) {
+        const totalPages = Math.ceil(currentFilteredData.length / pageSize);
+        if (!isLoadingPage && currentPage < totalPages) {
+          isLoadingPage = true;
+          currentPage++;
+          renderPage(currentPage);
+        }
+      }
+    }
+
+    // When processing is finished, update the full data count and hide the table
     function simulateLoading() {
       setTimeout(() => {
         loadingMessage.style.display = 'none';
         dataInput.style.display = 'block';
-        outputSection.style.display = 'block';
-        exportBtn.style.display = 'block';
+        // Keep table hidden until a filter is applied
+        outputSection.style.display = 'none';
+        exportBtn.style.display = 'none';
         allData = processedData.slice();
         currentFilteredData = allData.slice();
+        // Update the total data count display
+        dataCountValue.textContent = allData.length;
+        dataCountSection.style.display = 'block';
+        // Reset pagination variables
+        currentPage = 1;
         console.log("Final Data:", allData);
-        renderTable(allData);
+        // Prepare table content without displaying it yet
+        renderPage(currentPage, true);
       }, 0);
-    }
-
-    function renderTable(data) {
-      dataTable.innerHTML = "";
-      if (data.length === 0) {
-        dataTable.innerHTML = "<tr><td>No data available</td></tr>";
-        return;
-      }
-      const headers = Object.keys(data[0]);
-      const allHeaders = ["No."].concat(headers);
-      let thead = "<tr>" + allHeaders.map(h => `<th>${h}</th>`).join('') + "</tr>";
-      dataTable.innerHTML += thead;
-      data.forEach((item, idx) => {
-        let rowData = [idx + 1];
-        headers.forEach(h => rowData.push(item[h] || ''));
-        let row = "<tr>" + rowData.map(cell => `<td>${cell}</td>`).join('') + "</tr>";
-        dataTable.innerHTML += row;
-      });
     }
 
     filterDataBtn.addEventListener('click', () => {
@@ -401,12 +484,32 @@
            messageEl.textContent = "Filtering data: 100%";
            setTimeout(() => {
               currentFilteredData = filtered.slice();
-              renderTable(filtered);
+              currentPage = 1;
+              // Now that a filter is applied, show the table
+              outputSection.style.display = 'block';
+              exportBtn.style.display = 'block';
+              renderPage(currentPage, true);
               filterLoading.style.display = 'none';
            }, 200);
          }
       }
       processChunk();
+    });
+
+    // Clear Filter Button event listener
+    clearFilterBtn.addEventListener("click", () => {
+      // Reset the filter select elements to their default (first option)
+      document.getElementById("startHour").selectedIndex = 0;
+      document.getElementById("startMinute").selectedIndex = 0;
+      document.getElementById("endHour").selectedIndex = 0;
+      document.getElementById("endMinute").selectedIndex = 0;
+      // Reset the currentFilteredData to include all data
+      currentFilteredData = allData.slice();
+      currentPage = 1;
+      // Hide the table again since filter is now cleared
+      outputSection.style.display = 'none';
+      exportBtn.style.display = 'none';
+      renderPage(currentPage, true);
     });
 
     exportBtn.addEventListener('click', () => {
