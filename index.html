@@ -6,14 +6,23 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="style.css">
   <script>
-    const allowedPasscodes = ["owen", "teo"]; 
-    const maxDevices = 2; 
+    const allowedPasscodes = ["owen", "teo"];
+    const maxDevices = 2;
     let activeDevices = JSON.parse(localStorage.getItem("globalActiveDevices")) || [];
+
+    window.onerror = function(message, source, lineno, colno, error) {
+      document.body.innerHTML = `<div class="error-overlay">
+        <h2>An error occurred</h2>
+        <p>${message}</p>
+        <p>Please reload the page and try again.</p>
+      </div>`;
+      return true;
+    };
 
     function checkAccess() {
       let myDeviceKey = localStorage.getItem("myDeviceKey");
       if (myDeviceKey) {
-        return; 
+        return;
       }
       let pass = prompt("Enter your access passcode:");
       if (!allowedPasscodes.includes(pass)) {
@@ -45,12 +54,16 @@
     <section id="drop-area" class="card">
       <p><i class="fa-solid fa-cloud-arrow-up"></i> Drag & drop your file here</p>
       <input type="file" id="fileElem" accept=".txt, .xlsx, .xls" multiple style="display:none;">
-      <button id="fileSelect" title="Select Files"><i class="fa-solid fa-folder-open"></i> Select Files</button>
+      <button id="fileSelect" title="Select Files">
+        <i class="fa-solid fa-folder-open"></i> Select Files
+      </button>
     </section>
 
     <section id="fileList" class="card"></section>
 
-    <div id="loadingMessage"><i class="fa-solid fa-spinner fa-spin"></i> Loading file, please wait...</div>
+    <div id="loadingMessage">
+      <i class="fa-solid fa-spinner fa-spin"></i> Loading file, please wait...
+    </div>
 
     <section id="data-input" class="card" style="display:none;">
       <h2><i class="fa-solid fa-filter"></i> Filter Data by Time</h2>
@@ -71,19 +84,29 @@
         </div>
       </div>
       <div class="btn-group">
-        <button id="filterData" title="Apply Filter"><i class="fa-solid fa-magnifying-glass"></i></button>
-        <button id="resetFilter" title="Reset Filter"><i class="fa-solid fa-rotate-left"></i></button>
+        <button id="filterData" title="Apply Filter">
+          <i class="fa-solid fa-magnifying-glass"></i> Filter Data
+        </button>
       </div>
     </section>
 
     <section id="output" class="card" style="display:none;">
       <div id="tableHeader">
-        <button id="exportBtn" title="Export to Excel"><i class="fa-solid fa-file-export"></i> Excel</button>
+        <button id="exportBtn" title="Export to Excel">
+          <i class="fa-solid fa-file-export"></i> Excel
+        </button>
       </div>
       <h2><i class="fa-solid fa-table"></i> Processed Data</h2>
       <table id="dataTable"></table>
     </section>
   </main>
+
+  <div id="filterLoading">
+    <div class="loading-container">
+      <div class="progress-bar"></div>
+      <div class="message">Filtering data: 0%</div>
+    </div>
+  </div>
 
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   <script>
@@ -97,7 +120,7 @@
     const outputSection = document.getElementById('output');
     const exportBtn = document.getElementById('exportBtn');
     const filterDataBtn = document.getElementById('filterData');
-    const resetFilterBtn = document.getElementById('resetFilter');
+    const filterLoading = document.getElementById('filterLoading');
 
     let uploadedFiles = [];
     let processedData = [];
@@ -139,7 +162,10 @@
     }
 
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
-      dropArea.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, false);
+      dropArea.addEventListener(evt, e => {
+        e.preventDefault();
+        e.stopPropagation();
+      }, false);
     });
     ['dragenter', 'dragover'].forEach(evt => {
       dropArea.addEventListener(evt, () => dropArea.classList.add('highlight'), false);
@@ -157,15 +183,20 @@
         alert("Please select at least one file.");
         return;
       }
-      processedData = []; allData = []; currentFilteredData = []; uploadedFiles = [];
-      renderTable([]); updateFileList();
+      processedData = [];
+      allData = [];
+      currentFilteredData = [];
+      uploadedFiles = [];
+      renderTable([]);
+      updateFileList();
       loadingMessage.style.display = 'block';
       dataInput.style.display = 'none';
       outputSection.style.display = 'none';
       exportBtn.style.display = 'none';
+
       [...files].forEach(file => {
-        if (!uploadedFiles.includes(file.name)) {
-          uploadedFiles.push(file.name);
+        if (!uploadedFiles.some(f => f.name === file.name)) {
+          uploadedFiles.push({ name: file.name, lastModified: file.lastModified });
         }
         console.log("Processing file:", file.name, file.type);
         if (file.type === "text/plain") {
@@ -183,10 +214,11 @@
       fileList.innerHTML = "";
       if (uploadedFiles.length > 0) {
         fileList.innerHTML = "<strong>Uploaded Files:</strong><br>";
-        uploadedFiles.forEach(name => {
+        uploadedFiles.forEach(fileObj => {
           let div = document.createElement('div');
           div.className = "file-item";
-          div.innerHTML = `${name} <span class="remove-btn" data-filename="${name}">&times;</span>`;
+          let modifiedDate = new Date(fileObj.lastModified).toLocaleString();
+          div.innerHTML = `${fileObj.name} <span class="file-date">(${modifiedDate})</span> <span class="remove-btn" data-filename="${fileObj.name}">&times;</span>`;
           fileList.appendChild(div);
         });
       }
@@ -199,7 +231,7 @@
     }
 
     function removeFile(name) {
-      uploadedFiles = uploadedFiles.filter(n => n !== name);
+      uploadedFiles = uploadedFiles.filter(f => f.name !== name);
       processedData = processedData.filter(item => item.Source !== name);
       allData = allData.filter(item => item.Source !== name);
       currentFilteredData = currentFilteredData.filter(item => item.Source !== name);
@@ -210,10 +242,9 @@
     function extractTime(raw) {
       const regex = /@?(\d{2}:\d{2}):\d{2}/;
       let match = regex.exec(raw);
-      return (match && match[1]) ? match[1] : (raw.length >= 5 ? raw.substring(0,5) : raw);
+      return (match && match[1]) ? match[1] : (raw.length >= 5 ? raw.substring(0, 5) : raw);
     }
 
-    // Updated: Process text file in chunks to prevent UI freezing
     function readTextFile(file) {
       const reader = new FileReader();
       reader.onload = e => {
@@ -224,7 +255,7 @@
         console.log("Parsed lines:", lines);
         let start = lines[0].toLowerCase().includes("time") ? 1 : 0;
         function processChunk(index) {
-          let chunkSize = 100; // process 100 lines at a time
+          let chunkSize = 10;
           let end = Math.min(index + chunkSize, lines.length);
           for (let i = index; i < end; i++) {
             let parts = lines[i].split(delimiter);
@@ -250,7 +281,6 @@
       reader.readAsText(file);
     }
 
-    // Updated: Process Excel file in chunks to prevent UI freezing
     function readExcelFile(file) {
       const reader = new FileReader();
       reader.onload = e => {
@@ -261,7 +291,7 @@
         let jsonData = XLSX.utils.sheet_to_json(ws);
         console.log("Excel JSON:", jsonData);
         function processExcelChunk(index) {
-          let chunkSize = 100; // process 100 rows at a time
+          let chunkSize = 10;
           let end = Math.min(index + chunkSize, jsonData.length);
           for (let i = index; i < end; i++) {
             let row = jsonData[i];
@@ -295,7 +325,7 @@
         currentFilteredData = allData.slice();
         console.log("Final Data:", allData);
         renderTable(allData);
-      }, 2000);
+      }, 0);
     }
 
     function renderTable(data) {
@@ -317,35 +347,66 @@
     }
 
     filterDataBtn.addEventListener('click', () => {
+      filterLoading.style.display = 'flex';
+      let progressBar = filterLoading.querySelector('.progress-bar');
+      let messageEl = filterLoading.querySelector('.message');
+      let simulatedProgress = 0;
+      progressBar.style.width = "0%";
+      messageEl.textContent = "Filtering data: 0%";
+      
+      const totalTime = 2000; 
+      const intervalTime = 100; 
+      const increments = totalTime / intervalTime;
+      const progressIncrement = 100 / increments;
+      
+      let interval = setInterval(() => {
+         simulatedProgress += progressIncrement;
+         if (simulatedProgress > 100) simulatedProgress = 100;
+         progressBar.style.width = simulatedProgress + '%';
+         messageEl.textContent = "Filtering data: " + Math.floor(simulatedProgress) + "%";
+      }, intervalTime);
+      
       const startTime = document.getElementById('startHour').value + ":" + document.getElementById('startMinute').value;
       const endTime = document.getElementById('endHour').value + ":" + document.getElementById('endMinute').value;
       if (!startTime || !endTime) {
         alert("Please select both start and end times completely.");
+        filterLoading.style.display = 'none';
+        clearInterval(interval);
         return;
       }
-      const toMins = t => {
-        let parts = t.split(':');
-        return parseInt(parts[0],10)*60 + parseInt(parts[1],10);
-      };
+      const toMins = t => parseInt(t.split(':')[0], 10) * 60 + parseInt(t.split(':')[1], 10);
       const sMins = toMins(startTime);
       const eMins = toMins(endTime);
-      let filtered = allData.filter(item => {
-        if (!item.Time) return false;
-        let m = toMins(item.Time);
-        return m >= sMins && m <= eMins;
-      });
-      console.log("Filtered Data:", filtered);
-      currentFilteredData = filtered.slice();
-      renderTable(filtered);
-    });
-
-    resetFilterBtn.addEventListener('click', () => {
-      document.getElementById('startHour').selectedIndex = 0;
-      document.getElementById('startMinute').selectedIndex = 0;
-      document.getElementById('endHour').selectedIndex = 0;
-      document.getElementById('endMinute').selectedIndex = 0;
-      currentFilteredData = allData.slice();
-      renderTable(allData);
+      
+      let filtered = [];
+      let index = 0;
+      function processChunk() {
+         let chunkSize = 50; 
+         let end = Math.min(index + chunkSize, allData.length);
+         for (let i = index; i < end; i++) {
+           let item = allData[i];
+           if (item.Time) {
+             let m = toMins(item.Time);
+             if (m >= sMins && m <= eMins) {
+                filtered.push(item);
+             }
+           }
+         }
+         index = end;
+         if (index < allData.length) {
+           setTimeout(processChunk, 0);
+         } else {
+           clearInterval(interval);
+           progressBar.style.width = "100%";
+           messageEl.textContent = "Filtering data: 100%";
+           setTimeout(() => {
+              currentFilteredData = filtered.slice();
+              renderTable(filtered);
+              filterLoading.style.display = 'none';
+           }, 200);
+         }
+      }
+      processChunk();
     });
 
     exportBtn.addEventListener('click', () => {
@@ -353,14 +414,11 @@
         alert("No data to export.");
         return;
       }
-      const toMins = t => {
-        let parts = t.split(':');
-        return parseInt(parts[0],10)*60 + parseInt(parts[1],10);
-      };
+      const toMins = t => parseInt(t.split(':')[0], 10) * 60 + parseInt(t.split(':')[1], 10);
       let sorted = currentFilteredData.slice().sort((a, b) => toMins(a.Time) - toMins(b.Time));
       console.log("Sorted Data:", sorted);
-      let open = parseFloat(sorted[sorted.length - 1].Price); 
-      let close = parseFloat(sorted[0].Price);               
+      let open = parseFloat(sorted[sorted.length - 1].Price);
+      let close = parseFloat(sorted[0].Price);
       let high = -Infinity;
       let low = Infinity;
       let totalVol = 0;
@@ -387,23 +445,6 @@
       let wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "FilteredData");
       XLSX.writeFile(wb, "exported_data.xlsx");
-    });
-
-    document.getElementById('copyLink').addEventListener('click', () => {
-      const shareInput = document.getElementById('shareLink');
-      shareInput.select();
-      shareInput.setSelectionRange(0, 99999);
-      navigator.clipboard.writeText(shareInput.value)
-        .then(() => {
-          alert("Link copied to clipboard!");
-        })
-        .catch(err => {
-          alert("Failed to copy link: " + err);
-        });
-    });
-
-    document.addEventListener('DOMContentLoaded', () => {
-      document.getElementById('shareLink').value = window.location.href;
     });
   </script>
 </body>
